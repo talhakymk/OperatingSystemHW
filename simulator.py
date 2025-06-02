@@ -62,7 +62,7 @@ def main():
         debug_level = int(sys.argv[3])
         
     # Initialize CPU and parser
-    cpu = CPU()
+    cpu = CPU(debug_level=debug_level)
     parser = Parser()
     
     try:
