@@ -1,0 +1,211 @@
+Begin Data Section
+0 20      # Initial PC - start at OS initialization code
+1 999     # Initial SP - stack starts at 999 and grows down
+2 0       # System call result
+3 0       # Number of instructions executed
+4 0       # Current running thread ID
+5 0       # Number of active threads
+6 100     # Thread table base (starts at 100)
+
+# Thread table structure (20 bytes per thread):
+# Base+0: Thread ID
+# Base+1: Start time
+# Base+2: Instructions executed
+# Base+3: State (0=inactive, 1=ready, 2=running, 3=blocked)
+# Base+4: PC
+# Base+5: SP
+# Rest: Reserved
+
+# Numbers to sort for Thread 1 (moved to avoid conflicts)
+1020 10   # N = 10 numbers to sort
+1021 64   # Numbers to sort
+1022 34
+1023 25
+1024 12
+1025 22
+1026 11
+1027 90
+1028 45
+1029 33
+1030 21
+
+# Working variables for Thread 1
+1031 0    # i (outer loop counter)
+1032 0    # j (inner loop counter)
+1033 0    # temp variable for swap
+1034 0    # current element
+1035 0    # next element
+1036 0    # print counter
+
+# Numbers for linear search in Thread 2
+2020 10   # N = 10 numbers to search
+2021 45   # Key to search for
+2022 10   # Numbers to search in
+2023 20
+2024 30
+2025 40
+2026 45
+2027 50
+2028 60
+2029 70
+2030 80
+2031 90
+
+# Working variables for Thread 2
+2032 0    # search index
+2033 0    # current element
+2034 -1   # result (-1 if not found)
+
+# Custom thread data (Thread 3)
+3020 5    # Counter for loop
+End Data Section
+
+Begin Instruction Section
+# OS Initialization (starts at 20)
+20 SET 100 6    # Set thread table base address
+21 SET 0 5      # Initialize number of active threads
+
+# Initialize Thread 1 (Bubble Sort)
+22 SET 1 100    # Thread 1 ID
+23 CPY 3 101    # Start time = current instruction count
+24 SET 0 102    # Instructions executed = 0
+25 SET 1 103    # State = ready
+26 SET 1000 104 # PC = 1000 (thread 1 code)
+27 SET 1990 105 # SP = 1990
+
+# Initialize Thread 2 (Linear Search)
+28 SET 2 120    # Thread 2 ID
+29 CPY 3 121    # Start time
+30 SET 0 122    # Instructions executed
+31 SET 1 123    # State = ready
+32 SET 2000 124 # PC = 2000
+33 SET 2990 125 # SP = 2990
+
+# Initialize Thread 3 (Custom)
+34 SET 3 140    # Thread 3 ID
+35 CPY 3 141    # Start time
+36 SET 0 142    # Instructions executed
+37 SET 1 143    # State = ready
+38 SET 3000 144 # PC = 3000
+39 SET 3990 145 # SP = 3990
+
+# Start first thread
+40 SET 1 4      # Set current thread to 1
+41 SET 3 5      # Set number of active threads
+42 SET 2 103    # Set thread 1 state to running
+43 SET 1000 0   # Set PC to first thread
+44 USER 0       # Switch to user mode and jump to thread 1
+
+# OS Scheduler (called after YIELD at address 50)
+50 SET 1 4      # Reset to thread 1 for now (simple scheduling)
+51 SET 1000 0   # Set PC to thread 1
+52 USER 0       # Switch to user mode
+
+# Thread 1 - Bubble Sort
+1000 SET 0 1031     # i = 0 (outer loop)
+1001 CPY 1020 1040  # Load N into temp
+1002 ADD 1040 -1    # N-1
+1003 CPY 1031 1041  # Load i
+1004 SUBI 1041 1040 # Compare i with N-1
+1005 JIF 1041 1060  # If i >= N-1, done with outer loop
+
+# Inner loop initialization
+1006 SET 0 1032     # j = 0
+1007 CPY 1020 1042  # Load N
+1008 CPY 1031 1043  # Load i
+1009 SUBI 1042 1043 # N - i
+1010 ADD 1042 -1    # N - i - 1
+1011 CPY 1032 1044  # Load j
+1012 SUBI 1044 1042 # Compare j with N-i-1
+1013 JIF 1044 1055  # If j >= N-i-1, done with inner loop
+
+# Compare adjacent elements
+1014 CPY 1032 1045  # Load j
+1015 ADD 1045 1021  # Calculate address of arr[j]
+1016 CPY 1045 1034  # Get arr[j]
+1017 CPY 1032 1046  # Load j
+1018 ADD 1046 1      # j+1
+1019 ADD 1046 1021  # Calculate address of arr[j+1] 
+1020 CPY 1046 1035  # Get arr[j+1]
+
+# Check if swap needed
+1021 CPY 1034 1047  # Copy arr[j]
+1022 SUBI 1047 1035 # Compare arr[j] - arr[j+1]
+1023 JIF 1047 1052  # If arr[j] <= arr[j+1], no swap needed
+
+# Perform swap
+1024 CPY 1034 1033  # temp = arr[j]
+1025 CPY 1032 1048  # Load j
+1026 ADD 1048 1021  # Calculate address of arr[j]
+1027 CPY 1035 1048  # arr[j] = arr[j+1]
+1028 CPY 1032 1049  # Load j
+1029 ADD 1049 1      # j+1
+1030 ADD 1049 1021  # Calculate address of arr[j+1]
+1031 CPY 1033 1049  # arr[j+1] = temp
+
+# Increment j and continue inner loop
+1032 ADD 1032 1     # j++
+1033 SET 1007 0     # Jump back to inner loop condition
+1034 HLT            # Should not reach here
+
+# End of inner loop
+1055 ADD 1031 1     # i++
+1056 SET 1001 0     # Jump back to outer loop
+1057 HLT            # Should not reach here
+
+# Print sorted array
+1060 SET 0 1036     # Initialize print counter
+1061 CPY 1020 1050  # Load N
+1062 CPY 1036 1051  # Load print counter
+1063 SUBI 1051 1050 # Compare counter with N
+1064 JIF 1051 1070  # If counter >= N, done printing
+
+1065 CPY 1036 1052  # Load counter
+1066 ADD 1052 1021  # Calculate address of element
+1067 SYSCALL PRN 1052 # Print the element
+1068 ADD 1036 1     # Increment counter
+1069 SET 1061 0     # Jump back to print loop
+
+1070 SYSCALL HLT    # End thread
+
+# Thread 2 - Linear Search
+2000 SET 0 2032     # Initialize search index
+2001 SET -1 2034    # Initialize result to -1 (not found)
+
+# Search loop
+2002 CPY 2020 2040  # Load N
+2003 CPY 2032 2041  # Load current index
+2004 SUBI 2041 2040 # Compare index with N
+2005 JIF 2041 2015  # If index >= N, search done
+
+# Get current element and compare with key
+2006 CPY 2032 2042  # Load index
+2007 ADD 2042 2022  # Calculate address of current element
+2008 CPY 2042 2033  # Get current element
+2009 CPY 2021 2043  # Get search key
+2010 CPY 2033 2044  # Copy current element
+2011 SUBI 2044 2043 # Compare current element with key
+2012 JIF 2044 2017  # If not equal, continue search
+
+# Found the element
+2013 CPY 2032 2034  # Store found index in result
+2014 SET 2015 0     # Jump to end of search
+
+# Continue search
+2015 ADD 2032 1     # Increment index
+2016 SET 2002 0     # Jump back to search loop
+
+# Print result and end
+2017 SYSCALL PRN 2034 # Print search result
+2018 SYSCALL HLT    # End thread
+
+# Thread 3 - Custom (Count down and print)
+3000 CPY 3020 3021  # Load counter value
+3001 SYSCALL PRN 3021 # Print current value
+3002 ADD 3020 -1    # Decrement counter in memory
+3003 CPY 3020 3022  # Load counter to check
+3004 JIF 3022 3007  # If counter <= 0, exit
+3005 SYSCALL YIELD  # Yield to other threads
+3006 SET 3000 0     # Jump back to start
+3007 SYSCALL HLT    # End thread
+End Instruction Section
