@@ -37,24 +37,25 @@ Begin Data Section
 1035 0    # next element
 1036 0    # print counter
 
-# Numbers for linear search in Thread 2
-2020 10   # N = 10 numbers to search
-2021 45   # Key to search for
-2022 10   # Numbers to search in
-2023 20
-2024 30
-2025 40
-2026 45
-2027 50
-2028 60
-2029 70
-2030 80
-2031 90
+# Numbers for linear search in Thread 2 (moved to avoid conflicts)
+2500 10   # N = 10 numbers to search
+2501 45   # Key to search for
+2502 10   # Numbers to search in
+2503 20
+2504 30
+2505 40
+2506 45
+2507 50
+2508 60
+2509 70
+2510 80
+2511 90
 
 # Working variables for Thread 2
-2032 0    # search index
-2033 0    # current element
-2034 -1   # result (-1 if not found)
+2520 0    # search index
+2521 0    # current element
+2522 -1   # result (-1 if not found)
+2523 0    # temp for comparisons
 
 # Custom thread data (Thread 3)
 3020 5    # Counter for loop
@@ -97,9 +98,45 @@ Begin Instruction Section
 44 USER 0       # Switch to user mode and jump to thread 1
 
 # OS Scheduler (called after YIELD at address 50)
-50 SET 1 4      # Reset to thread 1 for now (simple scheduling)
-51 SET 1000 0   # Set PC to thread 1
-52 USER 0       # Switch to user mode
+50 CPY 4 40      # Save current thread ID
+51 SET 1 41      # Start checking from thread 1
+
+# Find next ready thread
+52 CPY 41 42     # Load thread ID to check
+53 SET 0 43      # Initialize offset
+54 SET 0 44      # Counter for thread table offset
+
+# Calculate thread table offset (20 * thread_id)
+55 CPY 41 45     # Load current thread ID
+56 SET 20 46     # Set multiplier
+57 ADD 43 45     # Add thread ID to offset
+58 ADD 44 1      # Increment counter
+59 CPY 44 47     # Check counter
+60 SUBI 47 46    # Compare with 20
+61 JIF 47 65     # If done multiplying, continue
+62 SET 55 0      # Loop for multiplication
+
+# Access thread table
+65 ADD 43 6      # Add base address
+66 ADD 43 3      # Add state offset
+67 CPY 43 44     # Get thread state
+68 SUBI 44 1     # Check if state is ready (1)
+69 JIF 44 75     # If not ready, try next thread
+
+# Found ready thread
+70 CPY 41 4      # Set as current thread
+71 ADD 43 1      # Add PC offset
+72 CPY 43 0      # Set PC to thread's saved PC
+73 SET 2 44      # Set state to running (2)
+74 USER 0        # Switch to user mode
+
+# Try next thread
+75 ADD 41 1      # Increment thread ID
+76 CPY 5 77      # Load number of active threads
+77 CPY 41 78     # Load current thread ID
+78 SUBI 77 78    # Compare with max threads
+79 JIF 77 51     # If more threads, continue checking
+80 SET 51 0      # If no more threads, start over from thread 1
 
 # Thread 1 - Bubble Sort
 1000 SET 0 1031     # i = 0 (outer loop)
@@ -150,16 +187,20 @@ Begin Instruction Section
 
 # Continue inner loop
 1032 ADD 1032 1     # j++
-1033 SYSCALL YIELD  # Yield to other threads
-1034 SET 1007 0     # Jump back to inner loop condition
+1033 SET 1 103      # Set thread state to ready
+1034 SET 50 0       # Jump to OS scheduler (YIELD)
+1035 SET 1007 0     # Jump back to inner loop condition
 
 # End of inner loop
 1050 ADD 1031 1     # i++
-1051 SYSCALL YIELD  # Yield to other threads
-1052 SET 1001 0     # Jump back to outer loop
+1051 SET 1 103      # Set thread state to ready
+1052 SET 50 0       # Jump to OS scheduler (YIELD)
+1053 SET 1001 0     # Jump back to outer loop
 
 # Print sorted array
 1060 SET 0 1036     # Initialize print counter
+
+# Print loop
 1061 CPY 1020 1050  # Load N
 1062 CPY 1036 1051  # Load print counter
 1063 SUBI 1051 1050 # Compare counter with N
@@ -171,36 +212,46 @@ Begin Instruction Section
 1068 ADD 1036 1     # Increment counter
 1069 SET 1061 0     # Jump back to print loop
 
-1070 SYSCALL HLT    # End thread
+# End thread
+1070 SET 0 103      # Set thread state to inactive
+1071 SYSCALL HLT    # End thread
 
 # Thread 2 - Linear Search
-2000 SET 0 2032     # Initialize search index
-2001 SET -1 2034    # Initialize result to -1 (not found)
+2000 SET 0 2520     # Initialize search index
+2001 SET -1 2522    # Initialize result to -1 (not found)
 
-# Search loop
-2002 CPY 2020 2040  # Load N
-2003 CPY 2032 2041  # Load current index
-2004 SUBI 2041 2040 # Compare index with N
-2005 JIF 2041 2015  # If index >= N, search done
+# Search loop start
+2002 CPY 2520 2523  # Load current index to temp
+2003 CPY 2500 2521  # Load array size (N)
+2004 SUBI 2521 2523 # Compare N - index
+2005 JIF 2521 2017  # If N - index <= 0, not found
 
-# Get current element and compare with key
-2006 CPY 2032 2042  # Load current index
-2007 ADD 2042 2022  # Calculate address (base + index)
-2008 CPY 2042 2033  # Get current element
-2009 CPY 2021 2044  # Get search key
-2010 CPY 2033 2045  # Copy current element
-2011 SUBI 2045 2044 # Compare with key (element - key)
-2012 JIF 2045 2016  # If equal (difference is 0), found
+# Get current element and compare
+2006 CPY 2520 2523  # Load current index
+2007 ADD 2523 2502  # Calculate address (base + index)
+2008 CPY 2523 2524  # Store calculated address temporarily
+2009 CPY 2524 2525  # Get value at calculated address
+2010 CPY 2525 2521  # Move array value to comparison register
+2011 CPY 2501 2523  # Load search key
+2012 SUBI 2521 2523 # Compare array[index] - key
+2013 JIF 2521 2015  # If not equal, continue search
+
+# Found the key
+2014 CPY 2520 2522  # Save found index
+2015 SET 2019 0     # Jump to print result
 
 # Continue search
-2013 ADD 2032 1     # Increment index
-2014 SET 2002 0     # Loop back to start
+2016 ADD 2520 1     # Increment index
+2017 SET 2002 0     # Loop back to start
 
 # Not found
-2015 SET -1 2034    # Set result to -1
-2016 CPY 2034 2046  # Copy result for printing
-2017 SYSCALL PRN 2046  # Print result
-2018 SYSCALL HLT    # End thread
+2018 SET -1 2522    # Set result to -1
+2019 SET 2019 0     # Jump to print result
+
+# Print result and exit
+2020 SYSCALL PRN 2522  # Print result
+2021 SET 0 123     # Set thread state to inactive
+2022 SYSCALL HLT    # End thread
 
 # Thread 3 - Custom (Count down and print)
 3000 CPY 3020 3021  # Load counter value
