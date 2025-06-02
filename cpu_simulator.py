@@ -16,6 +16,8 @@ class CPU:
         self.data_addresses = set()  # Track data locations
         self.debug_level = debug_level
         self.instruction_counter = 0
+        self.last_pc = -1  # Track last PC for loop detection
+        self.same_pc_count = 0  # Count how many times we've seen the same PC
         
     def is_halted(self) -> bool:
         return self.halted
@@ -209,12 +211,50 @@ class CPU:
         return 0  # No ready thread found
             
     def execute(self):
-        # Infinite loop detection
+        # Infinite loop detection - more sophisticated version
         if not hasattr(self, 'instruction_counter'):
             self.instruction_counter = 0
         self.instruction_counter += 1
-        if self.instruction_counter > 100000:  # Adjust threshold as needed
-            print("Warning: Possible infinite loop detected. Halting.")
+        
+        current_pc = self.get_pc()
+        if current_pc == self.last_pc:
+            self.same_pc_count += 1
+            if self.same_pc_count > 100:  # If we're stuck at the same PC for too long
+                print(f"Warning: Stuck at PC={current_pc} for {self.same_pc_count} cycles.")
+                print("Memory state around PC:")
+                for i in range(max(0, current_pc-5), min(len(self.memory), current_pc+6)):
+                    print(f"Memory[{i}] = {self.memory[i]}")
+                    
+                # Try to recover by switching to next thread
+                current_thread = self.get_memory_value(4)
+                if current_thread > 0:
+                    thread_table_base = self.get_memory_value(6)
+                    thread_base = thread_table_base + (current_thread - 1) * 20
+                    # Mark current thread as inactive
+                    self.set_memory_value(thread_base + 3, 0)
+                    # Update active thread count
+                    active_threads = self.get_memory_value(5)
+                    self.set_memory_value(5, active_threads - 1)
+                    
+                # Try to switch to next thread
+                next_thread = self.find_next_ready_thread()
+                if next_thread > 0:
+                    print(f"Switching from stuck thread {current_thread} to thread {next_thread}")
+                    self.mode = CPUMode.KERNEL
+                    self.switch_thread(next_thread)
+                    self.same_pc_count = 0
+                    self.last_pc = -1
+                    return
+                else:
+                    print("No other threads available, halting.")
+                    self.halted = True
+                    return
+        else:
+            self.same_pc_count = 0
+            self.last_pc = current_pc
+            
+        if self.instruction_counter > 100000:  # Overall instruction limit
+            print("Warning: Maximum instruction count reached. Halting.")
             print(f"Current thread: {self.get_memory_value(4)}, PC: {self.get_pc()}")
             self.halted = True
             return

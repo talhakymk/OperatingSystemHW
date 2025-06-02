@@ -103,55 +103,60 @@ Begin Instruction Section
 
 # Thread 1 - Bubble Sort
 1000 SET 0 1031     # i = 0 (outer loop)
-1001 CPY 1020 1040  # Load N into temp
-1002 ADD 1040 -1    # N-1
+
+# Outer loop condition
+1001 CPY 1020 1040  # Load N
+1002 SUBI 1040 1    # N-1 for outer loop limit
 1003 CPY 1031 1041  # Load i
 1004 SUBI 1041 1040 # Compare i with N-1
 1005 JIF 1041 1060  # If i >= N-1, done with outer loop
 
 # Inner loop initialization
 1006 SET 0 1032     # j = 0
-1007 CPY 1020 1042  # Load N
-1008 CPY 1031 1043  # Load i
-1009 SUBI 1042 1043 # N - i
-1010 ADD 1042 -1    # N - i - 1
-1011 CPY 1032 1044  # Load j
-1012 SUBI 1044 1042 # Compare j with N-i-1
-1013 JIF 1044 1055  # If j >= N-i-1, done with inner loop
 
-# Compare adjacent elements
-1014 CPY 1032 1045  # Load j
-1015 ADD 1045 1021  # Calculate address of arr[j]
-1016 CPY 1045 1034  # Get arr[j]
-1017 CPY 1032 1046  # Load j
-1018 ADD 1046 1      # j+1
-1019 ADD 1046 1021  # Calculate address of arr[j+1] 
-1020 CPY 1046 1035  # Get arr[j+1]
+# Inner loop condition
+1007 CPY 1020 1040  # Load N
+1008 SUBI 1040 1    # N-1 for inner loop limit
+1009 CPY 1031 1041  # Subtract i from N-1
+1010 SUBI 1040 1041 # N-1-i is our limit
+1011 CPY 1032 1041  # Load j
+1012 SUBI 1041 1040 # Compare j with N-1-i
+1013 JIF 1041 1050  # If j >= N-1-i, done with inner loop
 
-# Check if swap needed
-1021 CPY 1034 1047  # Copy arr[j]
-1022 SUBI 1047 1035 # Compare arr[j] - arr[j+1]
-1023 JIF 1047 1052  # If arr[j] <= arr[j+1], no swap needed
+# Load and compare adjacent elements
+1014 CPY 1032 1042  # Load j
+1015 ADD 1042 1021  # Calculate address of arr[j]
+1016 CPY 1042 1034  # Get arr[j]
+
+1017 CPY 1032 1043  # Load j
+1018 ADD 1043 1     # j+1
+1019 ADD 1043 1021  # Calculate address of arr[j+1]
+1020 CPY 1043 1035  # Get arr[j+1]
+
+# Compare elements
+1021 CPY 1034 1044  # Copy arr[j]
+1022 SUBI 1044 1035 # Compare arr[j] - arr[j+1]
+1023 JIF 1044 1030  # If arr[j] <= arr[j+1], no swap needed
 
 # Perform swap
 1024 CPY 1034 1033  # temp = arr[j]
-1025 CPY 1032 1048  # Load j
-1026 ADD 1048 1021  # Calculate address of arr[j]
-1027 CPY 1035 1048  # arr[j] = arr[j+1]
-1028 CPY 1032 1049  # Load j
-1029 ADD 1049 1      # j+1
-1030 ADD 1049 1021  # Calculate address of arr[j+1]
-1031 CPY 1033 1049  # arr[j+1] = temp
+1025 CPY 1032 1045  # Load j
+1026 ADD 1045 1021  # Calculate address of arr[j]
+1027 CPY 1035 1045  # arr[j] = arr[j+1]
+1028 CPY 1032 1046  # Load j
+1029 ADD 1046 1     # j+1
+1030 ADD 1046 1021  # Calculate address of arr[j+1]
+1031 CPY 1033 1046  # arr[j+1] = temp
 
-# Increment j and continue inner loop
+# Continue inner loop
 1032 ADD 1032 1     # j++
-1033 SET 1007 0     # Jump back to inner loop condition
-1034 HLT            # Should not reach here
+1033 SYSCALL YIELD  # Yield to other threads
+1034 SET 1007 0     # Jump back to inner loop condition
 
 # End of inner loop
-1055 ADD 1031 1     # i++
-1056 SET 1001 0     # Jump back to outer loop
-1057 HLT            # Should not reach here
+1050 ADD 1031 1     # i++
+1051 SYSCALL YIELD  # Yield to other threads
+1052 SET 1001 0     # Jump back to outer loop
 
 # Print sorted array
 1060 SET 0 1036     # Initialize print counter
@@ -179,24 +184,22 @@ Begin Instruction Section
 2005 JIF 2041 2015  # If index >= N, search done
 
 # Get current element and compare with key
-2006 CPY 2032 2042  # Load index
-2007 ADD 2042 2022  # Calculate address of current element
+2006 CPY 2032 2042  # Load current index
+2007 ADD 2042 2022  # Calculate address (base + index)
 2008 CPY 2042 2033  # Get current element
-2009 CPY 2021 2043  # Get search key
-2010 CPY 2033 2044  # Copy current element
-2011 SUBI 2044 2043 # Compare current element with key
-2012 JIF 2044 2017  # If not equal, continue search
-
-# Found the element
-2013 CPY 2032 2034  # Store found index in result
-2014 SET 2015 0     # Jump to end of search
+2009 CPY 2021 2044  # Get search key
+2010 CPY 2033 2045  # Copy current element
+2011 SUBI 2045 2044 # Compare with key (element - key)
+2012 JIF 2045 2016  # If equal (difference is 0), found
 
 # Continue search
-2015 ADD 2032 1     # Increment index
-2016 SET 2002 0     # Jump back to search loop
+2013 ADD 2032 1     # Increment index
+2014 SET 2002 0     # Loop back to start
 
-# Print result and end
-2017 SYSCALL PRN 2034 # Print search result
+# Not found
+2015 SET -1 2034    # Set result to -1
+2016 CPY 2034 2046  # Copy result for printing
+2017 SYSCALL PRN 2046  # Print result
 2018 SYSCALL HLT    # End thread
 
 # Thread 3 - Custom (Count down and print)
