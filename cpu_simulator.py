@@ -59,7 +59,14 @@ class CPU:
         if not self.check_user_mode_access(address):
             return 0
             
-        value = self.memory[address]
+        # Doğrudan memory dizisine bak
+        raw_value = self.memory[address]
+        
+        # Debug
+        if hasattr(self, 'debug_level') and self.debug_level >= 3:
+            print(f"get_memory_value({address}): raw_value={raw_value}")
+        
+        value = raw_value
         if isinstance(value, str):
             if not allow_instruction and address in self.instruction_addresses:
                 print(f"Error: Trying to read instruction as data at address {address}")
@@ -118,7 +125,7 @@ class CPU:
         
     def switch_thread(self, thread_id):
         """Switch execution to the specified thread."""
-        if self.debug_level >= 2:
+        if hasattr(self, 'debug_level') and self.debug_level >= 2:
             print(f"Switching to thread {thread_id}")
         
         # Save current thread state if a thread is running
@@ -128,10 +135,13 @@ class CPU:
         if current_thread > 0:
             current_thread_base = thread_table_base + (current_thread - 1) * 20
             # Save PC
-            self.set_memory_value(current_thread_base + 1, self.pc)
-            # Save registers
-            for i in range(8):
-                self.set_memory_value(current_thread_base + 10 + i, self.registers[i])
+            self.set_memory_value(current_thread_base + 4, self.get_pc())  # PC değerini +4 indeksine kaydet
+            # Save SP 
+            self.set_memory_value(current_thread_base + 5, self.get_sp())  # SP değerini +5 indeksine kaydet
+            # Save registers if they exist
+            if hasattr(self, 'registers'):
+                for i in range(8):
+                    self.set_memory_value(current_thread_base + 10 + i, self.registers[i])
         
         # Set the new thread as current
         self.set_memory_value(4, thread_id)
@@ -139,16 +149,24 @@ class CPU:
         if thread_id > 0:
             # Load the new thread state
             new_thread_base = thread_table_base + (thread_id - 1) * 20
-            # Load PC
-            self.pc = self.get_memory_value(new_thread_base + 1)
-            # Load registers
-            for i in range(8):
-                self.registers[i] = self.get_memory_value(new_thread_base + 10 + i)
+            # Load PC - önemli: +4 indeksindeki PC değerini al (yanlışlıkla +1 kullanıldı gibi görünüyor)
+            new_pc = self.get_memory_value(new_thread_base + 4)  # +4 indeksindeki PC değerini al
+            self.set_pc(new_pc)
+            
+            # Load SP - önemli: +5 indeksindeki SP değerini al
+            new_sp = self.get_memory_value(new_thread_base + 5)  # +5 indeksindeki SP değerini al
+            self.set_sp(new_sp)
+            
+            # Load registers if they exist
+            if hasattr(self, 'registers'):
+                for i in range(8):
+                    self.registers[i] = self.get_memory_value(new_thread_base + 10 + i)
+            
             # Set thread state to RUNNING (2)
             self.set_memory_value(new_thread_base + 3, 2)
             
-            if self.debug_level >= 2:
-                print(f"Thread {thread_id} now running at PC={self.pc}")
+            if hasattr(self, 'debug_level') and self.debug_level >= 2:
+                print(f"Thread {thread_id} now running at PC={self.get_pc()}")
         else:
             # No thread to run
             self.halted = True
@@ -174,6 +192,21 @@ class CPU:
                 return i
                 
         return 0  # No ready thread found
+    
+    def find_next_ready_thread(self):
+        """Find the next ready thread (state = 1)."""
+        thread_table_base = self.get_memory_value(6)
+        thread_count = 3  # Toplam thread sayısı (örneğin)
+        
+        for i in range(1, thread_count + 1):
+            thread_base = thread_table_base + (i - 1) * 20
+            thread_id = self.get_memory_value(thread_base + 0)
+            thread_state = self.get_memory_value(thread_base + 3)
+            
+            if thread_id > 0 and thread_state == 1:  # Thread exists and is ready
+                return thread_id
+        
+        return 0  # No ready thread found
             
     def execute(self):
         # Infinite loop detection
@@ -193,11 +226,27 @@ class CPU:
             return
             
         pc = self.get_pc()
-        if pc >= len(self.memory):
-            print(f"Error: Program Counter {pc} out of memory bounds")
-            self.halted = True
-            return
+        if pc >= len(self.memory) or pc < 0 or not isinstance(self.memory[pc], str) or not self.memory[pc].strip():
+            if self.debug_level >= 1:
+                print(f"Warning: No valid instruction at address {pc}, switching threads")
             
+            # PC geçersiz, thread'i durdurup diğerine geç
+            current_thread = self.get_memory_value(4)
+            if current_thread > 0:
+                thread_table_base = self.get_memory_value(6)
+                thread_base = thread_table_base + (current_thread - 1) * 20
+                # Thread durumunu inactive (0) olarak işaretle
+                self.set_memory_value(thread_base + 3, 0)
+            
+            # Yeni thread'e geçiş yap
+            next_thread = self.find_next_ready_thread()
+            if next_thread > 0:
+                self.switch_thread(next_thread)
+            else:
+                self.halted = True
+            
+            return
+                
         instruction = self.memory[pc]
         if not isinstance(instruction, str):
             if instruction == 0:  # Uninitialized memory
@@ -224,6 +273,11 @@ class CPU:
             elif opcode == "CPY":
                 addr1, addr2 = int(parts[1]), int(parts[2])
                 value = self.get_memory_value(addr1, allow_instruction=True)
+                
+                # Debug çıktısı ekleyin
+                if hasattr(self, 'debug_level') and self.debug_level >= 3:
+                    print(f"CPY at PC={self.get_pc()}: Memory[{addr1}]={value} to Memory[{addr2}]")
+                    
                 self.set_memory_value(addr2, value)
                     
             elif opcode == "CPYI":
@@ -247,14 +301,37 @@ class CPU:
                 addr1, addr2 = int(parts[1]), int(parts[2])
                 value1 = self.get_memory_value(addr1, allow_instruction=True)
                 value2 = self.get_memory_value(addr2, allow_instruction=True)
-                self.set_memory_value(addr2, value1 - value2)
-                    
+                result = value1 - value2
+                
+                if hasattr(self, 'debug_level') and self.debug_level >= 3:
+                    print(f"SUBI at PC={self.get_pc()}: Memory[{addr1}]={value1} - Memory[{addr2}]={value2} = {result}")
+                    print(f"  Setting Memory[{addr1}] = {result}")  # addr1'e yazıldığını belirt
+                
+                # Değeri addr1'e yaz (addr2'ye değil)
+                self.set_memory_value(addr1, result)
+                
+                if hasattr(self, 'debug_level') and self.debug_level >= 3:
+                    check = self.get_memory_value(addr1, allow_instruction=True)
+                    print(f"  Verification: Memory[{addr1}] = {check}")
+                                
             elif opcode == "JIF":
                 addr, target = int(parts[1]), int(parts[2])
                 value = self.get_memory_value(addr, allow_instruction=True)
+                
+                if hasattr(self, 'debug_level') and self.debug_level >= 3:
+                    print(f"JIF at PC={self.get_pc()}: Memory[{addr}]={value}, Target={target}")
+                    print(f"  Direct memory access: Memory[{addr}]={self.memory[addr]}")
+                
                 if value <= 0:
-                    self.update_thread_state()  # Update state before jump
+                    if hasattr(self, 'debug_level') and self.debug_level >= 3:
+                        print(f"  Jumping to {target} because {value} <= 0")
+                    
+                    # PC'yi güncelle
                     self.set_pc(target)
+                    
+                    # Thread durumunu güncelle (önemli!)
+                    self.update_thread_state()
+                    
                     return
                         
             elif opcode == "PUSH":
